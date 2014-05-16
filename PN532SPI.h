@@ -61,9 +61,11 @@ This files(include the header file and source file) are modified by @DaochenShi 
 #define false		0
 #define true 		1
 
+#define CHIPSELECT
 // This is which pin you used for ChipSelect. SPI slave accept the instrctions when its CS pulled to ground.
+#ifdef CHIPSELECT
 #define _chipSelect		11
-
+#endif
 
 void initialPN532SPI(void);
 boolean SAMConfig(void);
@@ -76,11 +78,11 @@ uint32_t authenticateBlock(
 	uint8_t authtype /*Either KEY_A or KEY_B */,
 	uint8_t* keys);
 boolean readMemoryBlock(uint8_t cardnumber /*1 or 2*/,uint8_t blockaddress /*0 to 63*/, uint8_t * block);
-boolean writeMemoryBlock(uint8_t cardnumber /*1 or 2*/,uint8_t blockaddress /*0 to 63*/, uint8_t * block);
-uint32_t configurePeerAsInitiator(uint8_t baudrate /* Any number from 0-2. 0 for 106kbps or 1 for 201kbps or 2 for 424kbps */); //106kps is not supported
-uint32_t configurePeerAsTarget(); 
-boolean initiatorTxRx(char* dataOut,char* dataIn);
-uint32_t targetTxRx(char* dataOut,char* dataIn);
+//boolean writeMemoryBlock(uint8_t cardnumber /*1 or 2*/,uint8_t blockaddress /*0 to 63*/, uint8_t * block);
+//uint32_t configurePeerAsInitiator(uint8_t baudrate /* Any number from 0-2. 0 for 106kbps or 1 for 201kbps or 2 for 424kbps */); //106kps is not supported
+//uint32_t configurePeerAsTarget(); 
+//boolean initiatorTxRx(char* dataOut,char* dataIn);
+//uint32_t targetTxRx(char* dataOut,char* dataIn);
 
 boolean sendCommandCheckAck(uint8_t *cmd, uint8_t cmdlen, uint16_t timeout);
 

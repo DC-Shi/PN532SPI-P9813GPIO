@@ -27,18 +27,22 @@ void initialPN532SPI()
 #ifdef PN532DEBUG
 	printf("wiringPiSetup is %d\n",j);
 #endif
+
+#ifdef CHIPSELECT
 	pinMode(_chipSelect, OUTPUT);
 
 	digitalWrite(_chipSelect, HIGH);
 	digitalWrite(_chipSelect, LOW);
+#endif
 
 	sleep(1);
 
 	pn532_packetbuffer[0] = PN532_FIRMWAREVERSION;
 
 	sendCommandCheckAck(pn532_packetbuffer, 1, 1000);
-
-	digitalWrite(_chipSelect, HIGH);	// to prevent wrong select.
+#ifdef CHIPSELECT
+	//digitalWrite(_chipSelect, HIGH);	// to prevent wrong select.
+#endif
 }
 
 
@@ -159,7 +163,6 @@ boolean SAMConfig(void)
 
 uint32_t authenticateBlock(uint8_t cardnumber /*1 or 2*/,uint32_t cid /*Card NUID*/, uint8_t blockaddress /*0 to 63*/,uint8_t authtype/*Either KEY_A or KEY_B */, uint8_t * keys) 
 {
-	int iter;
 
 	pn532_packetbuffer[0] = PN532_INDATAEXCHANGE;
 	pn532_packetbuffer[1] = cardnumber;  	// either card 1 or 2 (tested for card 1)
@@ -193,6 +196,7 @@ uint32_t authenticateBlock(uint8_t cardnumber /*1 or 2*/,uint32_t cid /*Card NUI
 	nfcPN532Read(pn532_packetbuffer, 2+6);
 
 #ifdef PN532DEBUG
+	int iter = 0;
 	for(iter=0;iter<14;iter++)
 	{
 		printf("%X ",(pn532_packetbuffer[iter]));
@@ -386,8 +390,9 @@ uint32_t readPassiveTargetID(uint8_t cardbaudrate)
 void nfcPN532Read(uint8_t* buff, uint8_t n) 
 {
 	uint8_t i;
-
+#ifdef CHIPSELECT
 	digitalWrite(_chipSelect, LOW);
+#endif
 	usleep(2000);
 	nfcPN532Write(PN532_SPI_DATAREAD);
 
@@ -403,7 +408,9 @@ void nfcPN532Read(uint8_t* buff, uint8_t n)
 		printf("debug readf is %d\n",buff[i]);
 #endif
 	}
+#ifdef CHIPSELECT
 	digitalWrite(_chipSelect, HIGH);
+#endif
 }
 
 void writeCommand(uint8_t* cmd, uint8_t cmd_len)
@@ -419,7 +426,9 @@ void writeCommand(uint8_t* cmd, uint8_t cmd_len)
 	printf("Sending: \n");
 #endif
 
+#ifdef CHIPSELECT
 	digitalWrite(_chipSelect, LOW);
+#endif	
 	usleep(2000);	// or whatever the delay is for waking up the board
 
 	nfcPN532Write(PN532_SPI_DATAWRITE);	//0x01
@@ -456,7 +465,9 @@ void writeCommand(uint8_t* cmd, uint8_t cmd_len)
 	checksum_1 = ~checksum;
 	nfcPN532Write(checksum_1);
 	nfcPN532Write(PN532_POSTAMBLE);
+#ifdef CHIPSELECT
 	digitalWrite(_chipSelect, HIGH);
+#endif	
 
 #ifdef PN532DEBUG
 	printf("checksum is %d\n", (checksum_1));
@@ -477,11 +488,15 @@ uint8_t readSpiStatus(void)
 {
 	uint8_t status;
 
+#ifdef CHIPSELECT
 	digitalWrite(_chipSelect, LOW);
+#endif
 	usleep(2000);
 	nfcPN532Write(PN532_SPI_STATREAD);
 	status = readF();
+#ifdef CHIPSELECT
 	digitalWrite(_chipSelect, HIGH);
+#endif
 	return status;
 }
 
@@ -498,15 +513,15 @@ void nfcPN532Write(uint8_t _data)
 
 		_data = _data>>1;
 	}
-	wiringPiSPIDataRW(1, &writeData, 1);
+	wiringPiSPIDataRW(channel, &writeData, 1);
 
 }
 
 /*Function:Receive a byte from PN532 through the SPI interface */
 uint8_t readF(void)
 {
-	unsigned char readData = 0,redata,p;
-	wiringPiSPIDataRW(1, &readData, 1);
+	unsigned char readData,redata = 0,p;
+	wiringPiSPIDataRW(channel, &readData, 1);
 
 	for(p=0;p<8;p++)
 	{

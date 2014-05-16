@@ -24,6 +24,18 @@ This project is created by @DaochenShi (shidaochen@live.com)
 // 20 microseconds to sleep
 #define CLOCKINTERVAL 20
 
+
+// This is to let other LEDs (pure light) controlled by GPIO(on/off)
+// Comment out the line would control P9813 only.
+//#define GPIO_PURE_LED
+
+#ifdef GPIO_PURE_LED
+	// use wiringPi pinout
+	#define GPIO_PURE_LED1	0
+	#define GPIO_PURE_LED2	2
+	#define GPIO_PURE_LED3	3
+#endif
+
 // Send a byte bit by bit using digitalWrite
 void sendByte(unsigned char b);
 
@@ -45,3 +57,8 @@ void setColorRGB(unsigned char r, unsigned char g, unsigned char b);
 // Set the color with multiple LEDs.
 // Not tested yet.
 void setColorRGBs(unsigned char* r, unsigned char* g, unsigned char* b, int count);
+
+// Initializing
+// I noted this because occasionally the light was brought up, and cannot be set.
+// Because I rebooted the Pi, and forgot to set to OUTPUT direction.
+void initialP9813GPIO();

@@ -11,8 +11,9 @@ beeper:		http://item.taobao.com/item.htm?spm=0.0.0.0.A0Zkth&id=6859691900
 
 Outline:
 Repeatedly read from NFC, use cardID to identify,	// currently I don't know how to read the blocks.
-if it matches some fixed number, it shows green light and beepGPIO;
-otherwise, it shows red and beepGPIO another sound.
+if it matches some fixed number, it shows white light and beepGPIO;
+if it matches another number, the program exits.
+otherwise, it gradually dim the light.
 
 You need the wiringPi lib.
 
@@ -28,6 +29,9 @@ wiringPi lib from:	Gordons Projects @ https://projects.drogon.net/raspberry-pi/w
 nfc lib from:		Katherine @ http://blog.iteadstudio.com/to-drive-itead-pn532-nfc-module-with-raspberry-pi/
 
 This project is created by @DaochenShi (shidaochen@live.com)
+
+20140322 maintaince:
+	LED init and control should be done by P9813GPIO, so any LED init related are removed from this file. Go check P9813GPIO.c
 */
 
 
@@ -41,30 +45,28 @@ This project is created by @DaochenShi (shidaochen@live.com)
 #include <time.h>	// for clock()
 #include <pthread.h>	// for multithreading
 
-//#define DEBUG
+//#define DEBUG_COLOR
 
 //#define BEEPER_GPIO_PIN	6
-#define LED1	0
-#define LED2	2
-#define LED3	3
 
 int initialWiringPi();
 
 void break_program(int sig);
 void* adjust_color();
 //#define MAXWAITINGTIME 10
-static int loopingStatus = 1;
+static int loopingStatus = 0;
 static unsigned char colorBase[3];
 static unsigned char colorTarget[3];
 
-const uint32_t authCID = 0xFFFFFFFF;
-const uint32_t exitCID = 0x77777777;
+const uint32_t authCID = 0x39;
+const uint32_t exitCID = 0x33;
 
 int main(int argc, const char* argv[])
 {
 
 	// NFC related, the read card ID. Currently I can only read this. I don't know how to get other infos.
 	uint32_t cardID;
+	int allowFailureTimes = 2;
 
 	// run this program in background when not in Debug mode
 #ifndef DEBUG
@@ -93,50 +95,76 @@ int main(int argc, const char* argv[])
 		
 		close(STDIN_FILENO);
 		close(STDOUT_FILENO);
-		close(STDERR_FILENO);
+		//close(STDERR_FILENO);
 	}
 #endif	
 	
 	initialWiringPi();
 	pthread_t _colorThread;
-
+	loopingStatus = 1;
 	pthread_create(&_colorThread, NULL, adjust_color, NULL);
 
-	printf("Initialized...\n");
+	printf("All initialized...\n");
 	while(loopingStatus)
 	{
 #ifdef DEBUG
-		printf("waiting for card read...\n");
+	printf("waiting for card read...\n");
 #endif
 
 		cardID = readPassiveTargetID(PN532_MIFARE_ISO14443A);
 
-		if (cardID ==  authCID)
+		if ( cardID == 0 && allowFailureTimes > 0) 
 		{
-			colorBase[0] = 0xFF; colorBase[1] = 0xFF; colorBase[2] = 0xFF;
-			colorTarget[0] = 0xFF; colorTarget[1] = 0xFF; colorTarget[2] = 0xFF; 
-			setColorRGBbuffered(colorBase[0], colorBase[1], colorBase[2]);
+			allowFailureTimes--;
+			continue;
+		}
+		if ( cardID != 0 )
+		{
+			allowFailureTimes = 2;
+			if ((cardID % 256) ==  authCID)
+			{
+				colorBase[0] = 0xFF; colorBase[1] = 0xFF; colorBase[2] = 0xFF;
+				colorTarget[0] = 0xFF; colorTarget[1] = 0xFF; colorTarget[2] = 0xFF; 
+				setColorRGBbuffered(colorBase[0], colorBase[1], colorBase[2]);
+			}
+			else
+			{
+				if ((cardID % 256) == exitCID)
+				{
+					loopingStatus = 0;
+					break;
+				}
+			colorTarget[0] = (cardID >> 16) % 256;
+			colorTarget[1] = (cardID >> 8) % 256;
+			colorTarget[2] = cardID % 256; 
+#ifdef DEBUG
+	printf("cardID = %X\n", cardID);
+#endif
+			}
 		}
 		else
 		{
-			if (cardID == exitCID)
-			{
-				loopingStatus = 0;
-				break;
-			}
-			colorTarget[0] = 0; colorTarget[1] = 0; colorTarget[2] = 0; 
+		// allowFailureTimes < 0 and cardID == 0, which means no card.
 #ifdef DEBUG
-		printf("cardID = %X\n", cardID);
+	printf("no card\n");
 #endif
+			colorTarget[0] = 0; colorTarget[1] = 0; colorTarget[2] = 0; 
 		}
 		sleep(1);
 
 	}
 	colorTarget[0] = 0; colorTarget[1] = 0; colorTarget[2] = 0; 
-	colorBase[0] = 0; colorBase[1] = 0; colorBase[2] = 0;
-	setColorRGBbuffered(0, 0, 0);
-	sleep(2);
+	colorBase[0] = 2; colorBase[1] = 3; colorBase[2] = 6;
+	setColorRGB(10, 7, 6);
+#ifdef BEEPER_GPIO_PIN
+	digitalWrite(BEEPER_GPIO_PIN, 1);
+	usleep(100 * 1000);
+	digitalWrite(BEEPER_GPIO_PIN, 0);
+#endif
+	sleep(1);
+	setColorRGB(0, 0, 0);
 	
+	pthread_join(_colorThread, NULL);
 	return 0;
 }
 
@@ -160,11 +188,8 @@ int initialWiringPi()
 #endif
 
 
-	// Blank leds
-	setColorRGBbuffered(0, 0, 0);
-#ifdef DEBUG
-	printf("LED blacked.\n");
-#endif
+	// Initializing LEDs
+	initialP9813GPIO();
 
 	// Hook crtl+c event
 	signal(SIGINT, break_program);
@@ -172,14 +197,12 @@ int initialWiringPi()
 	printf("Hooked Ctrl+C.\n");
 #endif
 
-	// Setting the pure white LED
-	pinMode(LED1, OUTPUT);
-	pinMode(LED2, OUTPUT);
-	pinMode(LED3, OUTPUT);
-#ifdef DEBUG
-	printf("Pure white LED set.\n");
+#ifdef BEEPER_GPIO_PIN
+	pinMode(BEEPER_GPIO_PIN, OUTPUT);
+	digitalWrite(BEEPER_GPIO_PIN, 1);
+	usleep(100 * 1000);
+	digitalWrite(BEEPER_GPIO_PIN, 0);
 #endif
-
 	// Use init function from nfc.c
 	// why you use such a simple function name?!
 	initialPN532SPI();
@@ -211,6 +234,7 @@ void break_program(int sig)
 	signal(sig, SIG_DFL);
 }
 
+static clock_t previousTimeClock;
 // Adjust the P9813 color by another thread.
 void* adjust_color(void)
 {
@@ -218,7 +242,7 @@ void* adjust_color(void)
 	int colorMaxDiff;
 	while (loopingStatus){
 		/// Parse current color, and gradually fade-in/fade-out
-#ifdef DEBUG
+#ifdef DEBUG_COLOR
 		printf("Changing color...loop = %d\n", loopingStatus);
 #endif
 		colorMaxDiff = 0;
@@ -227,14 +251,8 @@ void* adjust_color(void)
 		colorMaxDiff = (colorMaxDiff > abs(colorBase[2] - colorTarget[2])) ? colorMaxDiff : abs(colorBase[2] - colorTarget[2]);
 		
 
-		//colorMaxDiff = (colorMaxDiff > 15) ? colorMaxDiff/16 : colorMaxDiff;
-#ifdef DEBUG
-		printf("colorMaxDiff = %d, %dR->%dR, %dG->%dG, %dB->%dB\n",
-		colorMaxDiff,
-		colorBase[0], colorTarget[0],
-		colorBase[1], colorTarget[1],
-		colorBase[2], colorTarget[2]);
-#endif
+		colorMaxDiff = (colorMaxDiff > 15) ? colorMaxDiff/16 : colorMaxDiff;
+
 		if (colorMaxDiff)
 		{
 			{
@@ -243,7 +261,17 @@ void* adjust_color(void)
 				colorBase[2] = colorBase[2] - (colorBase[2] - colorTarget[2]) / colorMaxDiff;
 				setColorRGBbuffered(colorBase[0], colorBase[1], colorBase[2]);
 			}
+#ifdef DEBUG_COLOR
+	printf("interval of previous %d\n", (clock() - previousTimeClock));
+	previousTimeClock = clock();
+	printf("colorMaxDiff = %d, %dR->%dR, %dG->%dG, %dB->%dB\n",
+		colorMaxDiff,
+		colorBase[0], colorTarget[0],
+		colorBase[1], colorTarget[1],
+		colorBase[2], colorTarget[2]);
+#endif
 		}
-		usleep(200 * 1000);
+		usleep(20 * 1000);
+
 	}
 }

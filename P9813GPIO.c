@@ -17,31 +17,28 @@ This project is created by @DaochenShi (shidaochen@live.com)
 #include <stdio.h>	// printf,etc.
 #include <stdlib.h>	// exit
 #include <signal.h>	// for Ctrl+C
-#include <unistd.h>	// usleep
+//#include <unistd.h>	// usleep
+#include <time.h>	// nanosleep
 #include <math.h>	// abs
 #include <errno.h>	// errno
 
 #include "P9813GPIO.h"
 
-// This is to let other LEDs (pure light) controlled by GPIO(on/off)
-// Comment out the line would control P9813 only.
-#define GPIO_PURE_LED
 
-#ifdef GPIO_PURE_LED
-	// use wiringPi pinout
-	#define LED1	0
-	#define LED2	2
-	#define LED3	3
-#endif
+
+
+static struct timespec TIMCLOCKINTERVAL;
 
 // Send a byte bit by bit using digitalWrite
 void sendByte(unsigned char b)
 {
 	char loop = 8;
+	#ifndef DRYRUN
 	for(loop = 0; loop < 8; loop++)
 	{
 		digitalWrite(CLKPIN, LOW);
-		usleep(CLOCKINTERVAL);
+		nanosleep(&TIMCLOCKINTERVAL, NULL);
+		//usleep(CLOCKINTERVAL);
 		// The  ic will latch a bit of data when the rising edge of the clock coming, And the data should changed after the falling edge of the clock; 
 		// Copyed from P9813 datasheet
 		
@@ -51,10 +48,12 @@ void sendByte(unsigned char b)
 			digitalWrite(DATPIN, LOW);
 		
 		digitalWrite(CLKPIN, HIGH);
-		usleep(CLOCKINTERVAL);
+		nanosleep(&TIMCLOCKINTERVAL, NULL);
+		//usleep(CLOCKINTERVAL);
 		
 		b <<= 1;
 	}
+	#endif
 }
 
 // Send a color(RGB) information to LED.
@@ -73,9 +72,17 @@ void sendColor(unsigned char r, unsigned char g, unsigned char b)
 }
 
 #ifdef GPIO_PURE_LED
-	static unsigned char LED1value = 0;
-	static unsigned char LED2value = 0;
-	static unsigned char LED3value = 0;
+	#ifdef GPIO_PURE_LED1
+		static unsigned char LED1value = 0;
+	#endif
+	
+	#ifdef GPIO_PURE_LED2
+		static unsigned char LED2value = 0;
+	#endif
+	
+	#ifdef GPIO_PURE_LED3
+		static unsigned char LED3value = 0;
+	#endif
 #endif
 static unsigned char previousR = 0;
 static unsigned char previousG = 0;
@@ -95,43 +102,51 @@ void setColorRGBbuffered(unsigned char r, unsigned char g, unsigned char b)
 	max = (max > b) ? max : b;
 
 #ifdef GPIO_PURE_LED
-	if (LED1value != (max > 0x40))
-	{
-		digitalWrite(LED1, (max > 0x40));
-		LED1value = (max > 0x40);
-	}
-	else
-	{
-		unchangedTimes++;
-	#ifdef DEBUG
-		printf("Unchanged this time, %d\n", unchangedTimes);
+
+	#ifdef GPIO_PURE_LED1
+		if (LED1value != (max > 0x40))
+		{
+			digitalWrite(GPIO_PURE_LED1, (max > 0x40));
+			LED1value = (max > 0x40);
+		}
+		else
+		{
+			unchangedTimes++;
+		#ifdef P9813DEBUG
+			printf("Unchanged this time, %d\n", unchangedTimes);
+		#endif
+		}
 	#endif
-	}
 	
-	if (LED2value != (max > 0x80))
-	{
-		digitalWrite(LED2, (max > 0x80));
-		LED2value = (max > 0x80);
-	}
-	else
-	{
-		unchangedTimes++;
-	#ifdef DEBUG
-		printf("Unchanged this time, %d\n", unchangedTimes);
+	#ifdef GPIO_PURE_LED1
+		if (LED2value != (max > 0x80))
+		{
+			digitalWrite(GPIO_PURE_LED2, (max > 0x80));
+			LED2value = (max > 0x80);
+		}
+		else
+		{
+			unchangedTimes++;
+		#ifdef P9813DEBUG
+			printf("Unchanged this time, %d\n", unchangedTimes);
+		#endif
+		}
 	#endif
-	}
-	if (LED3value != (max > 0xC0))
-	{
-		digitalWrite(LED3, (max > 0xC0));
-		LED3value = (max > 0xC0);
-	}
-	else
-	{
-		unchangedTimes++;
-	#ifdef DEBUG
-		printf("Unchanged this time, %d\n", unchangedTimes);
+	
+	#ifdef GPIO_PURE_LED3
+		if (LED3value != (max > 0xC0))
+		{
+			digitalWrite(GPIO_PURE_LED3, (max > 0xC0));
+			LED3value = (max > 0xC0);
+		}
+		else
+		{
+			unchangedTimes++;
+		#ifdef P9813DEBUG
+			printf("Unchanged this time, %d\n", unchangedTimes);
+		#endif
+		}
 	#endif
-	}
 #endif
 
 	if ( (previousR != r) || (previousG != g) || (previousB != b) || (!unchangedTimes))
@@ -146,7 +161,7 @@ void setColorRGBbuffered(unsigned char r, unsigned char g, unsigned char b)
 	else
 	{
 		unchangedTimes++;
-#ifdef DEBUG
+#ifdef P9813DEBUG
 	printf("Unchanged this time, %d\n", unchangedTimes);
 #endif
 	}
@@ -181,12 +196,54 @@ void setColorRGBs(unsigned char* r, unsigned char* g, unsigned char* b, int coun
 	sendByte(0);sendByte(0);sendByte(0);sendByte(0);
 } 
 
+// Initializing
+// I noted this because occasionally the light was brought up, and cannot be set.
+// Because I rebooted the Pi, and forgot to set to OUTPUT direction.
+void initialP9813GPIO()
+{
+	int result = wiringPiSetup();
+	if (result < 0)
+	{
+		printf("wiringPi setup failed, are you root?\n");
+		exit(1);
+	}
+	
+	TIMCLOCKINTERVAL.tv_sec = 0;
+	TIMCLOCKINTERVAL.tv_nsec = 20000L;
+	
+	pinMode(CLKPIN, OUTPUT);
+	pinMode(DATPIN, OUTPUT);
+	setColorRGB(0, 0, 0);
+
+#ifdef GPIO_PURE_LED
+	// use wiringPi pinout
+	#ifdef GPIO_PURE_LED1
+	pinMode(GPIO_PURE_LED1, OUTPUT);
+	digitalWrite(GPIO_PURE_LED1, 0);
+	printf("Set up wiringPi GPIO%d\n", GPIO_PURE_LED1);
+	#endif
+	
+	#ifdef GPIO_PURE_LED2
+	pinMode(GPIO_PURE_LED2, OUTPUT);
+	digitalWrite(GPIO_PURE_LED2, 0);
+	printf("Set up wiringPi GPIO%d\n", GPIO_PURE_LED2);
+	#endif
+	
+	#ifdef GPIO_PURE_LED3
+	pinMode(GPIO_PURE_LED3, OUTPUT);
+	digitalWrite(GPIO_PURE_LED3, 0);
+	printf("Set up wiringPi GPIO%d\n", GPIO_PURE_LED3);
+	#endif
+#endif
+
+}
+
 ////////////////////////////////////
 // These functions below are for testing alone. You can test this file only when changing 'LEDmain' to 'main'
 ////////////////////////////////////
 /// Question: I do NOT want these functions to be called outside this file, how to do it?
 
-
+#ifdef SINGLE_FILE_DEBUG
 static int loop = 1;
 void CtrlCBreak(int sig)
 {
@@ -267,3 +324,4 @@ int LEDmain(int argc, const char* argv[])
 	
 	return 0;
 }
+#endif
