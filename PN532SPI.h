@@ -56,7 +56,7 @@ This files(include the header file and source file) are modified by @DaochenShi 
 #define PN532_BAUDRATE_424K 	2
 
 #define boolean 	int
-#define channel 	1
+#define channel 	0
 #define byte 		unsigned char
 #define false		0
 #define true 		1

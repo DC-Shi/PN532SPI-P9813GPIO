@@ -2,13 +2,16 @@
 CC = gcc
 ## args: especially libs
 CFLAGS = -O3 -Wunused
-LIBS = -lwiringPi
+LIBS = -lwiringPi -lpthread
 OUTPUT = NFCLight
 
 all: NFCLight
 
 debug: CC += -DDEBUG
 debug: NFCLight
+
+debugpn532: CC += -DDEBUG -DPN532DEBUG
+debugpn532: NFCLight
 
 
 NFCLightusable:  main.o P9813GPIO.o PN532SPIusable.o
