@@ -251,7 +251,7 @@ void* adjust_color(void)
 		colorMaxDiff = (colorMaxDiff > abs(colorBase[2] - colorTarget[2])) ? colorMaxDiff : abs(colorBase[2] - colorTarget[2]);
 		
 
-		colorMaxDiff = (colorMaxDiff > 15) ? colorMaxDiff/16 : colorMaxDiff;
+		colorMaxDiff = (colorMaxDiff > 15) ? 16 : colorMaxDiff;
 
 		if (colorMaxDiff)
 		{
